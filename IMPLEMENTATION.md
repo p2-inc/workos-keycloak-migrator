@@ -39,7 +39,8 @@ Two separate extension jars (one per `### ...extension` heading in SPEC) — bot
 ### Parent pom highlights
 
 - `java.version` = 21, `maven.compiler.release` = 21
-- `keycloak.version` = 26.5.7 (matches Phase Two’s current line)
+- `keycloak.version` = 26.7.3 (current upstream Keycloak; ahead of Phase Two’s newest published
+  image tag, see the docker-compose notes below)
 - `phasetwo-client.version` = latest of `io.phasetwo:phasetwo-admin-client`
 - `workos.version` = `5.x` (`com.workos:workos`, Kotlin SDK with documented Java interop)
 - `dependencyManagement` pins: Keycloak BOM, Jackson, slf4j 2.x, junit-bom 5.10, testcontainers BOM, wiremock 3, picocli 4, bucket4j-core 8, kotlin-stdlib 2.1.
@@ -507,15 +508,17 @@ services:
       POSTGRES_PASSWORD: keycloak
     volumes: [pgdata:/var/lib/postgresql/data]
   keycloak:
-    image: quay.io/phasetwo/phasetwo-keycloak:26.5.7
+    # docker/Dockerfile: the Phase Two provider jars out of
+    # quay.io/phasetwo/phasetwo-keycloak:26.6.6 layered onto quay.io/keycloak/keycloak:26.7.3.
+    build: {context: ./docker}
     depends_on: [postgres]
     environment:
       KC_DB: postgres
       KC_DB_URL_HOST: postgres
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HOSTNAME_URL: http://localhost:8080
       KC_HEALTH_ENABLED: "true"
       KC_HTTP_ENABLED: "true"
@@ -523,13 +526,12 @@ services:
     volumes:
       - ./extensions/webhook-listener/target/webhook-listener-*.jar:/opt/keycloak/providers/webhook-listener.jar
       - ./extensions/slow-migration/target/slow-migration-*.jar:/opt/keycloak/providers/slow-migration.jar
-      - ./extensions/lib/keycloak-user-migration-*.jar:/opt/keycloak/providers/keycloak-user-migration.jar
     command: ["start-dev", "--features=organization"]
 volumes:
   pgdata:
 ```
 
-The keycloak-user-migration jar is downloaded into `extensions/lib/` by a `maven-dependency-plugin` invocation during the build (the project ships GitHub releases). A small Make-like script at `scripts/bootstrap-realm.sh` will:
+The keycloak-user-migration jar (`keycloak-rest-provider`) already ships inside the Phase Two provider set that `docker/Dockerfile` copies in, so there is nothing to download. A small Make-like script at `scripts/bootstrap-realm.sh` will:
 1. Create realm `migrate-target`.
 2. Create a confidential client `migrator-cli` with service-account + `realm-admin`.
 3. Print the client-secret for use with the migrator.

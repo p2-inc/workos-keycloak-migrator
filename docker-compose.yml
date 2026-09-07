@@ -14,7 +14,10 @@ services:
       retries: 10
 
   keycloak:
-    image: quay.io/phasetwo/phasetwo-keycloak:26.5.7
+    # Keycloak 26.7.3 + the Phase Two providers. See docker/Dockerfile for why this is a build
+    # rather than a plain `image:` pull.
+    build:
+      context: ./docker
     depends_on:
       postgres:
         condition: service_healthy
@@ -23,8 +26,8 @@ services:
       KC_DB_URL_HOST: postgres
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HOSTNAME: localhost
       KC_HOSTNAME_PORT: "8080"
       KC_HOSTNAME_STRICT: "false"
@@ -46,7 +49,6 @@ services:
     volumes:
       - ./extensions/webhook-listener/target/workos-webhook-listener.jar:/opt/keycloak/providers/workos-webhook-listener.jar
       - ./extensions/slow-migration/target/workos-slow-migration.jar:/opt/keycloak/providers/workos-slow-migration.jar
-      - ./extensions/lib/keycloak-rest-provider-6.2.1.jar:/opt/keycloak/providers/keycloak-rest-provider.jar
     command:
       - start-dev
       - --features=organization
