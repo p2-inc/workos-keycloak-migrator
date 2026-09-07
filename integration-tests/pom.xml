@@ -16,9 +16,13 @@
     <properties>
         <!-- Failsafe is opted-in via -Pit; this property is also flipped by the profile. -->
         <skipITs>true</skipITs>
+        <!-- The IT container image is built from docker/Dockerfile: the Phase Two provider jars
+             out of ${wkm.phasetwo.*} layered onto the ${wkm.keycloak.*} base. -->
+        <wkm.keycloak.image>quay.io/keycloak/keycloak</wkm.keycloak.image>
+        <wkm.keycloak.tag>26.7.3</wkm.keycloak.tag>
         <wkm.phasetwo.image>quay.io/phasetwo/phasetwo-keycloak</wkm.phasetwo.image>
-        <wkm.phasetwo.tag>26.5.7</wkm.phasetwo.tag>
-        <wkm.rest-provider.version>6.2.1</wkm.rest-provider.version>
+        <wkm.phasetwo.tag>26.6.6</wkm.phasetwo.tag>
+        <wkm.rest-provider.version>6.2.3</wkm.rest-provider.version>
     </properties>
 
     <dependencies>
@@ -116,6 +120,9 @@
                     <skipITs>${skipITs}</skipITs>
                     <systemPropertyVariables>
                         <wkm.providers.dir>${project.build.directory}/providers</wkm.providers.dir>
+                        <wkm.dockerfile>${project.basedir}/../docker/Dockerfile</wkm.dockerfile>
+                        <wkm.keycloak.image>${wkm.keycloak.image}</wkm.keycloak.image>
+                        <wkm.keycloak.tag>${wkm.keycloak.tag}</wkm.keycloak.tag>
                         <wkm.phasetwo.image>${wkm.phasetwo.image}</wkm.phasetwo.image>
                         <wkm.phasetwo.tag>${wkm.phasetwo.tag}</wkm.phasetwo.tag>
                     </systemPropertyVariables>

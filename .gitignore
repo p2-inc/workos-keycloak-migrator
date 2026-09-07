@@ -1,7 +1,8 @@
 *~
 target/
 node_modules/
-# Vendored third-party provider jars; download per README.
+# Vendored third-party provider jars. Not needed for the default flow -- docker/Dockerfile
+# brings in the Phase Two provider set (keycloak-rest-provider included).
 extensions/lib/*.jar
 # Real credentials kept locally only; sourced for validation, never committed.
 SECRETS.md

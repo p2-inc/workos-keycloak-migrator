@@ -11,7 +11,7 @@ organizations & webhooks extensions installed).
 | `migrator/` | `workos-keycloak-migrator.jar` (fat) | Standalone bulk runner |
 | `extensions/webhook-listener/` | `workos-webhook-listener.jar` | Keycloak `RealmResourceProvider` at `/realms/{realm}/workos-webhook/{publicId}` |
 | `extensions/slow-migration/` | `workos-slow-migration.jar` | `RealmResourceProvider` at `/realms/{realm}/workos-legacy/{username}` for `keycloak-user-migration` |
-| `integration-tests/` | (test-only) | Failsafe IT module that drives the migrator + both extensions against a live phasetwo-keycloak container |
+| `integration-tests/` | (test-only) | Failsafe IT module that drives the migrator + both extensions against a live Keycloak container |
 
 See `IMPLEMENTATION.md` for the full design contract and `SPEC.md` for the original brief.
 
@@ -33,10 +33,10 @@ See `IMPLEMENTATION.md` for the full design contract and `SPEC.md` for the origi
    docker compose up -d
    ```
 
-   The compose file mounts both extension jars into `/opt/keycloak/providers/`. If you want
-   the slow-migration flow too, drop the `keycloak-rest-provider-6.2.1.jar` from
-   `https://github.com/daniel-frak/keycloak-user-migration/releases` into
-   `extensions/lib/` before `docker compose up`.
+   The compose file builds `docker/Dockerfile` — Keycloak 26.7.3 with the Phase Two providers
+   layered in — and mounts both extension jars into `/opt/keycloak/providers/`. The
+   `keycloak-rest-provider` jar that the slow-migration flow needs ships inside that image, so
+   there is nothing to download by hand.
 
 3. **Create the target realm + a service-account client.**
 
@@ -127,17 +127,15 @@ password trade-off on first login).
 
 ## Local validation harness
 
-The repo ships a docker-compose stack that brings up Postgres + a phasetwo-keycloak image with our
-two extensions mounted as providers.
+The repo ships a docker-compose stack that brings up Postgres + the Keycloak 26.7.3 image from
+`docker/Dockerfile` with our two extensions mounted as providers.
 
 1. Build the project: `mvn -DskipTests package`
-2. Drop the `keycloak-user-migration` jar into `extensions/lib/` (download from
-   https://github.com/daniel-frak/keycloak-user-migration/releases).
-3. `WORKOS_API_KEY=sk_test_... WORKOS_CLIENT_ID=client_... WORKOS_CLIENT_SECRET=... docker compose up -d`
-4. `./scripts/bootstrap-realm.sh` — prints the migrator credentials.
-5. Run the bulk migrator (see above).
-6. Trigger a WorkOS event (e.g. update a user) — observe the webhook hit and the realm state.
-7. Reset a user’s password from the Keycloak login screen — observe the slow-migration extension
+2. `WORKOS_API_KEY=sk_test_... WORKOS_CLIENT_ID=client_... WORKOS_CLIENT_SECRET=... docker compose up -d --build`
+3. `./scripts/bootstrap-realm.sh` — prints the migrator credentials.
+4. Run the bulk migrator (see above).
+5. Trigger a WorkOS event (e.g. update a user) — observe the webhook hit and the realm state.
+6. Reset a user’s password from the Keycloak login screen — observe the slow-migration extension
    verify it against WorkOS via `keycloak-user-migration`.
 
 ## Attribute & realm-state conventions
@@ -226,7 +224,9 @@ The tagging happens through three paths so each entry point converges on the sam
 - `mvn test` — unit tests for the webhook verifier, rate limiter, JSON mappings, and the IdP
   provider-id mapper. No Docker required (~30 tests, < 5 s).
 - `mvn -Pit verify` — runs the unit suite plus the integration-test module. Requires a
-  reachable Docker host; pulls `quay.io/phasetwo/phasetwo-keycloak:26.5.7` on first run.
+  reachable Docker host; on first run it pulls `quay.io/keycloak/keycloak:26.7.3` plus
+  `quay.io/phasetwo/phasetwo-keycloak:26.6.6` and builds the combined image from
+  `docker/Dockerfile` (cached thereafter).
 
 ### Integration tests
 
@@ -235,7 +235,7 @@ The IT module lives at `integration-tests/` and is gated behind the `-Pit` Maven
 
 #### `BulkMigratorIT`
 
-Boots a phasetwo-keycloak container, points an in-JVM WireMock at the migrator's
+Boots the Keycloak container, points an in-JVM WireMock at the migrator's
 `--workos-base-url`, then drives the CLI in two ordered methods that share one container.
 
 - `happyPath_imports_workos_state` — runs the migrator against the canned fixture set
@@ -272,7 +272,7 @@ then drives the `keycloak-user-migration` legacy-service contract:
 - `federationComponent_can_be_installed_with_upstream_provider_id` — installs a
   `ComponentModel` with `providerId="User migration using a REST client"` and asserts it
   resolves; confirms our extension lines up with the upstream
-  `keycloak-rest-provider:6.2.1` that the phasetwo image ships.
+  `keycloak-rest-provider:6.2.3` that the phasetwo image ships.
 - `getKnownUser_returns_200_with_workos_shape` — `GET /workos-legacy/alice@…` with a valid
   bearer returns 200, the JSON body has the `username` / `email` / `emailVerified` /
   `attributes.workos.id` fields, and the `organizations[]` field is omitted (per spec).

@@ -5,31 +5,34 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.concurrent.Future;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.images.builder.ImageFromDockerfile;
 
 /**
- * Phase Two Keycloak container with file-based dev storage. Use {@link #withProvidersDir(Path)} to
- * mount our extension jars + the keycloak-rest-provider jar.
+ * Keycloak container with the Phase Two providers installed and file-based dev storage. Use {@link
+ * #withProvidersDir(Path)} to mount our extension jars alongside them.
+ *
+ * <p>The image is built from {@code docker/Dockerfile}, which layers the provider jars out of the
+ * newest published {@code phasetwo-keycloak} image onto the Keycloak version we target. See that
+ * file for why we don't just pull a Phase Two tag directly.
  */
 public class PhaseTwoKeycloakContainer extends GenericContainer<PhaseTwoKeycloakContainer> {
 
   public PhaseTwoKeycloakContainer() {
-    this(
-        System.getProperty("wkm.phasetwo.image", "quay.io/phasetwo/phasetwo-keycloak"),
-        System.getProperty("wkm.phasetwo.tag", "26.5.7"));
+    this(phaseTwoImage());
   }
 
-  public PhaseTwoKeycloakContainer(String image, String tag) {
-    super(DockerImageName.parse(image + ":" + tag));
+  public PhaseTwoKeycloakContainer(Future<String> image) {
+    super(image);
     withExposedPorts(8080, 9000);
     withEnv("KC_DB", "dev-file");
-    withEnv("KEYCLOAK_ADMIN", "admin");
-    withEnv("KEYCLOAK_ADMIN_PASSWORD", "admin");
+    withEnv("KC_BOOTSTRAP_ADMIN_USERNAME", "admin");
+    withEnv("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin");
     withEnv("KC_HOSTNAME_STRICT", "false");
     withEnv("KC_HOSTNAME_STRICT_HTTPS", "false");
     withEnv("KC_HTTP_ENABLED", "true");
@@ -41,6 +44,34 @@ public class PhaseTwoKeycloakContainer extends GenericContainer<PhaseTwoKeycloak
     waitingFor(
         Wait.forHttp("/health/ready").forPort(9000).withStartupTimeout(Duration.ofMinutes(3)));
     withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("kc-container")));
+  }
+
+  /**
+   * Build (or reuse) the Keycloak + Phase Two providers image. The tag is derived from the two
+   * source image tags so a change to either produces a fresh build while repeat runs hit the Docker
+   * layer cache. {@code deleteOnExit=false} keeps the image around between {@code mvn -Pit verify}
+   * invocations.
+   */
+  private static Future<String> phaseTwoImage() {
+    Path dockerfile =
+        Path.of(System.getProperty("wkm.dockerfile", "../docker/Dockerfile"))
+            .toAbsolutePath()
+            .normalize();
+    if (!Files.isRegularFile(dockerfile)) {
+      throw new IllegalStateException("Dockerfile not found: " + dockerfile);
+    }
+    String keycloakImage = System.getProperty("wkm.keycloak.image", "quay.io/keycloak/keycloak");
+    String keycloakTag = System.getProperty("wkm.keycloak.tag", "26.7.3");
+    String phasetwoImage =
+        System.getProperty("wkm.phasetwo.image", "quay.io/phasetwo/phasetwo-keycloak");
+    String phasetwoTag = System.getProperty("wkm.phasetwo.tag", "26.6.6");
+    return new ImageFromDockerfile(
+            "workos-keycloak-migrator/keycloak:" + keycloakTag + "-pt" + phasetwoTag, false)
+        .withDockerfile(dockerfile)
+        .withBuildArg("KEYCLOAK_IMAGE", keycloakImage)
+        .withBuildArg("KEYCLOAK_TAG", keycloakTag)
+        .withBuildArg("PHASETWO_IMAGE", phasetwoImage)
+        .withBuildArg("PHASETWO_TAG", phasetwoTag);
   }
 
   /**
